@@ -1,0 +1,588 @@
+---
+title: "Eksplorasi Final"
+author: "Abdullah' Ammar Rabbaniyyin_M0401241066"
+date: "2026-05-28"
+output: rmdformats::readthedown
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Library
+
+```{r}
+library(tidyverse)
+library(skimr)
+library(janitor)
+library(corrplot)
+library(GGally)
+library(psych)
+library(DataExplorer)
+```
+
+# Import Data
+
+```{r}
+df <- read.csv("D:\\Mine\\Kuliah Journey\\Semester 4\\Analisis Eksplorasi Data\\Data FIX\\susenas_depok_rt_merged.csv")
+head(df)
+```
+
+```{r}
+str(df)
+```
+
+# Statistik Deskriptif
+
+```{r}
+summary(df)
+```
+
+```{r}
+skim(df)
+```
+
+# Cek missing value
+
+```{r}
+colSums(is.na(df))
+```
+
+# Distribusi
+
+```{r}
+df %>%
+  select(where(~ is.double(.))) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(
+    bins = 30,
+    fill = "skyblue",
+    color = "black"
+  ) +
+  facet_wrap(~name, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Histogram Variabel Numerik",
+    x = "Nilai",
+    y = "Frekuensi"
+  )
+```
+
+```{r}
+df %>%
+  select(where(~ is.double(.))) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(y = value)) +
+  geom_boxplot(fill = "skyblue") +
+  facet_wrap(~name, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Boxplot Variabel Numerik",
+    y = "Nilai"
+  )
+```
+
+# Outlier Jumlah Anak
+
+```{r}
+# Ambil variabel
+x <- df$Banyak_Anak
+
+# Hitung Q1, Q3, dan IQR
+Q1 <- quantile(x, 0.25, na.rm = TRUE)
+Q3 <- quantile(x, 0.75, na.rm = TRUE)
+IQR_val <- IQR(x, na.rm = TRUE)
+
+# Tukey Fence
+lower_bound <- Q1 - 1.5 * IQR_val
+upper_bound <- Q3 + 1.5 * IQR_val
+
+# Deteksi outlier
+outlier_index <- which(x < lower_bound | x > upper_bound)
+
+# Nilai outlier
+outlier_values <- x[outlier_index]
+
+# Ringkasan
+cat("Q1 :", Q1, "\n")
+cat("Q3 :", Q3, "\n")
+cat("IQR :", IQR_val, "\n")
+cat("Lower Bound :", lower_bound, "\n")
+cat("Upper Bound :", upper_bound, "\n")
+cat("Jumlah Outlier :", length(outlier_values), "\n")
+
+# Tampilkan outlier
+outlier_values
+```
+
+# Jumlah Anak
+
+```{r}
+# Pengelompokan
+df <- df %>%
+  mutate(
+    anak_kategori = case_when(
+      Banyak_Anak == 0 ~ "0",
+      Banyak_Anak == 1 ~ "1",
+      Banyak_Anak == 2 ~ "2",
+      Banyak_Anak > 2  ~ ">2"
+    )
+  )
+
+# Ubah jadi faktor agar urut
+df$anak_kategori <- factor(
+  df$anak_kategori,
+  levels = c("0", "1", "2", ">2")
+)
+
+# Cek distribusi
+table(df$anak_kategori)
+```
+
+```{r}
+ggplot(df, aes(x = anak_kategori)) +
+  geom_bar(fill = "skyblue") +
+  theme_minimal() +
+  labs(
+    title = "Distribusi Jumlah Anak",
+    x = "Kategori Jumlah Anak",
+    y = "Frekuensi"
+  )
+```
+
+# Distribusi Kapita
+
+```{r}
+library(ggplot2)
+
+ggplot(df, aes(x = KAPITA)) +
+  geom_histogram(bins = 100, fill = "skyblue", color = "white") +
+  theme_minimal() +
+  labs(
+    title = "Distribusi Pengeluaran per Kapita",
+    x = "Pengeluaran per Kapita (KAPITA)",
+    y = "Frekuensi"
+  )
+```
+
+```{r}
+ggplot(df,
+       aes(x = KAPITA,
+           fill = anak_kategori)) +
+  
+  geom_histogram(
+    bins = 100,
+    color = "white",
+    alpha = 0.6,
+    position = "identity"
+  ) +
+  
+  scale_fill_brewer(palette = "Set2") +
+  
+  theme_minimal() +
+  
+  labs(
+    title = "Distribusi Pengeluaran per Kapita",
+    subtitle = "Warna menunjukkan kategori jumlah anak",
+    x = "Pengeluaran per Kapita",
+    y = "Frekuensi",
+    fill = "Jumlah Anak"
+  )
+```
+
+# Scatter plot: Expend vs Kapita dengan ukuran berdasarkan jumlah anak
+
+```{r}
+ggplot(df, aes(x = EXPEND,
+               y = KAPITA,
+               size = Banyak_Anak,
+               color = anak_kategori)) +
+  
+  geom_point(alpha = 0.7) +
+  
+  scale_x_log10() +
+  scale_y_log10() +
+  
+  labs(
+    title = "Hubungan Pengeluaran Total dan Pengeluaran Per Kapita",
+    subtitle = "Ukuran titik menunjukkan jumlah anak",
+    x = "Pengeluaran Total (log scale)",
+    y = "Pengeluaran Per Kapita (log scale)",
+    size = "Jumlah Anak",
+    color = "Kategori Anak"
+  ) +
+  
+  theme_minimal()
+```
+
+# Tingkat Kesejahteraan per Kategori Asset
+
+```{r}
+asset_map <- c(
+  "R2001B" = "Kulkas",
+  "R2001C" = "AC",
+  "R2001F" = "Komputer",
+  "R2001G" = "Emas",
+  "R2001H" = "Motor",
+  "R2001K" = "Mobil",
+  "R2001M" = "Tanah"
+)
+
+df_long <- df %>%
+  
+  # Filter kategori jumlah anak
+  filter(anak_kategori %in% c("0", "1", "2", ">2")) %>%
+  # Ambil variabel yang diperlukan
+  select(
+    URUT,
+    anak_kategori,
+    KAPITA,
+    all_of(names(asset_map))
+  ) %>%
+  # Ubah wide -> long
+  pivot_longer(
+    cols = all_of(names(asset_map)),
+    names_to = "Asset_Code",
+    values_to = "Status"
+  ) %>%
+  # Hanya yang memiliki aset
+  filter(Status == 1) %>%
+  # Rename aset
+  mutate(
+    Kategori_Aset = asset_map[Asset_Code],
+    anak_kategori = factor(
+      anak_kategori,
+      levels = c("0", "1", "2", ">2")
+    )
+  )
+
+# Visualisasi
+ggplot(df_long,
+       aes(x = Kategori_Aset,
+           y = KAPITA,
+           fill = anak_kategori)) +
+  geom_boxplot(outlier.alpha = 0.5) +
+  scale_y_log10() +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Sebaran Tingkat Kesejahteraan per Kategori Aset",
+    subtitle = "Berdasarkan keluarga pemilik aset",
+    x = "Kategori Aset",
+    y = "Pengeluaran per Kapita (Log Scale)",
+    fill = "Jumlah Anak"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+```
+
+# Ekslusifitas Aset
+
+```{r}
+asset_cols <- c("R2001B","R2001C","R2001F",
+                "R2001G","R2001H","R2001K","R2001M")
+df %>%
+  summarise(across(all_of(asset_cols), mean)) %>%
+  pivot_longer(everything()) %>%
+  arrange(value)
+```
+
+## Ketimpangan
+### Pengeluaran
+
+```{r}
+df <- df %>%
+  mutate(
+    status_aset = ifelse(R2001K == 1,
+                         "Punya Aset",
+                         "Tidak Punya Aset")
+  )
+ggplot(df,
+       aes(x = status_aset,
+           y = EXPEND,
+           fill = status_aset)) +
+  
+  geom_boxplot() +
+  
+  scale_y_log10() +
+  
+  theme_minimal() +
+  
+  labs(
+    title = "Pengeluaran Rumah Tangga Berdasarkan Kepemilikan Aset",
+    x = "",
+    y = "Pengeluaran Total (Log Scale)"
+  )
+```
+
+### Konsumsi Kalori
+
+```{r}
+ggplot(df,
+       aes(x = status_aset,
+           y = KALORI_KAP,
+           fill = status_aset)) +
+  
+  geom_boxplot() +
+  
+  theme_minimal() +
+  
+  labs(
+    title = "Konsumsi Kalori Berdasarkan Kepemilikan Aset",
+    x = "",
+    y = "Kalori"
+  )
+```
+
+### Ijazah Kepala Keluarga
+
+```{r}
+ggplot(df,
+       aes(x = status_aset,
+           fill = as.factor(Ijazah_KRT))) +
+  
+  geom_bar(position = "fill") +
+  
+  scale_y_continuous(labels = scales::percent) +
+  
+  theme_minimal() +
+  
+  labs(
+    title = "Distribusi Pendidikan Kepala Rumah Tangga",
+    subtitle = "Berdasarkan Kepemilikan Aset",
+    x = "",
+    y = "Proporsi",
+    fill = "Pendidikan"
+  )
+```
+
+### Perbandingan Jumlah Anak
+
+```{r}
+ggplot(df,
+       aes(x = status_aset,
+           fill = anak_kategori)) +
+  
+  geom_bar(position = "fill") +
+  
+  scale_y_continuous(labels = scales::percent) +
+  
+  scale_fill_brewer(palette = "Pastel1") +
+  
+  labs(
+    title = "Distribusi Jumlah Anak Berdasarkan Kepemilikan Aset",
+    subtitle = "Kategori jumlah anak",
+    x = "",
+    y = "Proporsi",
+    fill = "Jumlah Anak"
+  ) +
+  
+  theme_minimal()
+```
+
+# Kapita vs Pendidikan KRT
+
+```{r}
+ggplot(df,
+       aes(x = as.factor(Ijazah_KRT),
+           y = KAPITA)) +
+  geom_boxplot(fill = "lightgreen") +
+  scale_y_log10() +
+  theme_minimal()
+```
+
+# Jumlah Anak vs Pendidikan KRT
+
+```{r}
+ggplot(df,
+       aes(x = as.factor(Ijazah_KRT),
+           y = Banyak_Anak)) +
+  geom_boxplot(fill = "gold") +
+  theme_minimal()
+```
+
+# KRT vs Jumlah Anak
+
+```{r}
+# Membuat label status bekerja KRT
+df <- df %>%
+  mutate(
+    status_krt = ifelse(KRT_Bekerja == 1,
+                        "KRT Bekerja",
+                        "KRT Tidak Bekerja")
+  )
+
+# Visualisasi proporsi jumlah anak
+ggplot(df,
+       aes(x = status_krt,
+           fill = anak_kategori)) +
+  
+  geom_bar(position = "fill") +
+  
+  scale_y_continuous(labels = scales::percent) +
+  
+  scale_fill_brewer(palette = "Pastel1") +
+  
+  labs(
+    title = "Distribusi Jumlah Anak Berdasarkan Status Kerja KRT",
+    subtitle = "Perbandingan proporsi jumlah anak",
+    x = "",
+    y = "Proporsi",
+    fill = "Jumlah Anak"
+  ) +
+  
+  theme_minimal()
+```
+
+# Pendidikan Tertinggi RT vs KAPITA
+
+```{r}
+ggplot(df,
+       aes(x = as.factor(Ijazah_Maks_RT),
+           y = KAPITA,
+           fill = as.factor(Ijazah_Maks_RT))) +
+  
+  geom_boxplot() +
+  
+  scale_y_log10() +
+  
+  labs(
+    title = "Pendidikan Tertinggi Rumah Tangga vs Pengeluaran per Kapita",
+    subtitle = "Semakin tinggi pendidikan, cenderung semakin tinggi kesejahteraan",
+    x = "Pendidikan Tertinggi Rumah Tangga",
+    y = "Pengeluaran per Kapita (Log Scale)",
+    fill = "Pendidikan"
+  ) +
+  
+  theme_minimal()
+```
+
+# Clustering
+
+```{r}
+# CLUSTERING RUMAH TANGGA
+
+library(tidyverse)
+library(cluster)
+library(factoextra)
+
+# MEMBUAT VARIABEL
+
+df_cluster <- df %>%
+  mutate(
+    FOOD_SHARE = (FOOD / EXPEND) * 100
+  ) %>%
+  
+  select(
+    KAPITA,
+    FOOD_SHARE,
+    PROTE_KAP,
+    Banyak_Anak,
+    Ijazah_KRT
+  ) %>%
+  
+  drop_na()
+
+# STANDARDISASI
+
+df_scaled <- scale(df_cluster)
+
+# MENENTUKAN JUMLAH CLUSTER
+
+fviz_nbclust(df_scaled,
+             kmeans,
+             method = "wss") +
+  theme_minimal()
+
+# K-MEANS CLUSTERING
+
+set.seed(123)
+
+kmeans_result <- kmeans(
+  df_scaled,
+  centers = 3,
+  nstart = 25
+)
+
+# Tambahkan cluster ke data
+df$cluster <- as.factor(kmeans_result$cluster)
+
+# VISUALISASI CLUSTER
+
+fviz_cluster(
+  kmeans_result,
+  data = df_scaled,
+  geom = "point",
+  ellipse.type = "norm"
+)
+```
+
+## Ringkasan rata-rata tiap cluster
+
+```{r}
+cluster_summary <- df %>%
+  mutate(
+    FOOD_SHARE = (FOOD / EXPEND) * 100
+  ) %>%
+  
+  group_by(cluster) %>%
+  
+  summarise(
+    rata_kapita = mean(KAPITA, na.rm = TRUE),
+    rata_food_share = mean(FOOD_SHARE, na.rm = TRUE),
+    rata_protein = mean(PROTE_KAP, na.rm = TRUE),
+    rata_anak = mean(Banyak_Anak, na.rm = TRUE),
+    rata_pendidikan = mean(Ijazah_KRT, na.rm = TRUE),
+    jumlah_rt = n()
+  )
+
+cluster_summary
+```
+
+## Visualisasi
+
+```{r}
+cluster_summary_long <- cluster_summary %>%
+  
+  pivot_longer(
+    cols = starts_with("rata"),
+    names_to = "variabel",
+    values_to = "nilai"
+  ) %>%
+  
+  group_by(variabel) %>%
+  
+  mutate(
+    nilai_scaled = scale(nilai)[,1]
+  )
+
+ggplot(cluster_summary_long,
+       aes(x = variabel,
+           y = nilai_scaled,
+           fill = cluster)) +
+  
+  geom_col(position = "dodge") +
+  
+  theme_minimal() +
+  
+  labs(
+    title = "Profil Relatif Tiap Cluster Rumah Tangga",
+    subtitle = "Nilai telah distandarisasi",
+    x = "",
+    y = "Nilai Standarisasi (Z-Score)"
+  ) +
+  
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  ) 
+```
+
+
